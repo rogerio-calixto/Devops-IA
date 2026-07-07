@@ -1,7 +1,7 @@
 # ADR-001: Stack de Rede Base (VPC) em Terraform — Pasta `network/`
 
 ## Status
-Proposto
+Aprovado
 
 ## Contexto
 
