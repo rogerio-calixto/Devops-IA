@@ -1,10 +1,10 @@
 provider "aws" {
-  region = var.aws_region
+  region = var.project.aws_region
 
   default_tags {
     tags = {
-      Project     = var.project_name
-      Environment = var.environment
+      Project     = var.project.name
+      Environment = var.project.environment
       ManagedBy   = "terraform"
       Repository  = "Devops-IA"
     }

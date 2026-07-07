@@ -95,11 +95,21 @@ network/
 ├── versions.tf
 ├── providers.tf
 ├── variables.tf
+├── terraform.tfvars
 ├── vpc.tf
 └── outputs.tf
 ```
 
 Nenhum outro arquivo `.tf` deve ser criado nesta ADR (sem subnets, sem IGW, sem NAT, sem security groups adicionais — fora de escopo, ver Premissas #5).
+
+> **Atualização pós-aprovação**: após a criação da regra de convenções
+> `.claude/rules/terraform-naming.md`, esta stack foi refatorada para segui-la
+> (variáveis agrupadas por domínio em vez de soltas, sem `default` em
+> `variables.tf`, valores em `terraform.tfvars`, resource renomeado de
+> `aws_vpc.main` para `aws_vpc.this` com um bloco `moved` para preservar o
+> recurso já aplicado). Os blocos de código abaixo já refletem essa
+> estrutura; a versão original (pré-convenção) fica preservada no histórico
+> do Git.
 
 ### 2. `network/versions.tf`
 
@@ -124,12 +134,12 @@ Configuração do provider AWS, validada com base na documentação oficial do p
 
 ```hcl
 provider "aws" {
-  region = var.aws_region
+  region = var.project.aws_region
 
   default_tags {
     tags = {
-      Project     = var.project_name
-      Environment = var.environment
+      Project     = var.project.name
+      Environment = var.project.environment
       ManagedBy   = "terraform"
       Repository  = "Devops-IA"
     }
@@ -142,45 +152,47 @@ Nota para o agente de implementação: **não** adicionar `access_key`/`secret_k
 ### 4. `network/variables.tf`
 
 ```hcl
-variable "aws_region" {
-  description = "Regiao AWS onde a stack de rede sera provisionada."
-  type        = string
-  default     = "us-east-1" # premissa assumida; confirmar disponibilidade do serviço na região desejada antes de alterar
+variable "project" {
+  description = "Configuração do projeto/ambiente, usada em tags e nomes de recursos em toda a stack."
+  type = object({
+    name        = string
+    environment = string
+    aws_region  = string
+  })
+  nullable = false
 }
 
-variable "project_name" {
-  description = "Nome do projeto, usado em tags e nomes de recursos."
-  type        = string
-  default     = "devops-ia"
-}
-
-variable "environment" {
-  description = "Nome do ambiente logico (ex.: dev, staging, prod)."
-  type        = string
-  default     = "dev"
-}
-
-variable "vpc_cidr" {
-  description = "Bloco CIDR IPv4 da VPC. Deve ser um bloco RFC1918 entre /16 e /28."
-  type        = string
-  default     = "10.0.0.0/16"
+variable "vpc" {
+  description = "Configuração da VPC."
+  type = object({
+    cidr_block           = string
+    enable_dns_support   = bool
+    enable_dns_hostnames = bool
+  })
+  nullable = false
 
   validation {
-    condition     = can(cidrhost(var.vpc_cidr, 0))
-    error_message = "vpc_cidr deve ser um bloco CIDR IPv4 valido."
+    condition     = can(cidrhost(var.vpc.cidr_block, 0))
+    error_message = "vpc.cidr_block deve ser um bloco CIDR IPv4 válido."
   }
 }
+```
 
-variable "enable_dns_support" {
-  description = "Habilita resolucao DNS dentro da VPC."
-  type        = bool
-  default     = true
+Valores concretos (sem `default` em `variables.tf`, conforme
+`.claude/rules/terraform-naming.md`):
+
+```hcl
+# network/terraform.tfvars
+project = {
+  name        = "devops-ia"
+  environment = "dev"
+  aws_region  = "us-east-1" # premissa assumida; confirmar disponibilidade do serviço na região desejada antes de alterar
 }
 
-variable "enable_dns_hostnames" {
-  description = "Habilita atribuicao de hostnames DNS a instancias na VPC."
-  type        = bool
-  default     = true
+vpc = {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
 }
 ```
 
@@ -189,14 +201,14 @@ variable "enable_dns_hostnames" {
 Argumentos validados via MCP Terraform (`mcp__terraform__get_provider_details`, providerDocID `12705644`, resource `aws_vpc`, provider `hashicorp/aws` v6.53.0): `cidr_block`, `enable_dns_support`, `enable_dns_hostnames`, `instance_tenancy`, `tags` são todos argumentos documentados e suportados nesta versão.
 
 ```hcl
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
+resource "aws_vpc" "this" {
+  cidr_block           = var.vpc.cidr_block
   instance_tenancy     = "default"
-  enable_dns_support   = var.enable_dns_support
-  enable_dns_hostnames = var.enable_dns_hostnames
+  enable_dns_support   = var.vpc.enable_dns_support
+  enable_dns_hostnames = var.vpc.enable_dns_hostnames
 
   tags = {
-    Name = "${var.project_name}-${var.environment}-vpc"
+    Name = "${var.project.name}-${var.project.environment}-vpc"
   }
 }
 ```
@@ -208,32 +220,32 @@ Atributos exportados confirmados no schema do recurso (`mcp__terraform__get_prov
 ```hcl
 output "vpc_id" {
   description = "ID da VPC provisionada."
-  value       = aws_vpc.main.id
+  value       = aws_vpc.this.id
 }
 
 output "vpc_arn" {
   description = "ARN da VPC provisionada."
-  value       = aws_vpc.main.arn
+  value       = aws_vpc.this.arn
 }
 
 output "vpc_cidr_block" {
   description = "Bloco CIDR IPv4 da VPC."
-  value       = aws_vpc.main.cidr_block
+  value       = aws_vpc.this.cidr_block
 }
 
 output "default_security_group_id" {
   description = "ID do security group default criado automaticamente pela VPC."
-  value       = aws_vpc.main.default_security_group_id
+  value       = aws_vpc.this.default_security_group_id
 }
 
 output "default_route_table_id" {
   description = "ID da route table default criada automaticamente pela VPC."
-  value       = aws_vpc.main.default_route_table_id
+  value       = aws_vpc.this.default_route_table_id
 }
 
 output "default_network_acl_id" {
   description = "ID da network ACL default criada automaticamente pela VPC."
-  value       = aws_vpc.main.default_network_acl_id
+  value       = aws_vpc.this.default_network_acl_id
 }
 ```
 
@@ -290,7 +302,7 @@ Permissões opcionais (recomendadas pela própria documentação do recurso `aws
 3. `terraform init` (deve baixar `hashicorp/aws` ~> 6.53.0 sem erros).
 4. `terraform fmt -check` (deve retornar sem diferenças; se houver, aplicar `terraform fmt` antes de seguir).
 5. `terraform validate` (deve retornar `Success!`).
-6. `terraform plan -out=tfplan` — revisar o plano: deve mostrar exatamente **1 resource to add** (`aws_vpc.main`), **0 to change**, **0 to destroy**.
+6. `terraform plan -out=tfplan` — revisar o plano: deve mostrar exatamente **1 resource to add** (`aws_vpc.this`), **0 to change**, **0 to destroy**.
 7. **Ponto de decisão humana obrigatório**: qualquer `terraform apply` (deste ou de qualquer plano) deve ser aprovado explicitamente por um humano antes de ser executado pelo `aws-devops-engineer`, mesmo em conta de dev. Este agente planejador não aprova nem executa o apply.
 8. Após aprovação humana, o `aws-devops-engineer` executa `terraform apply tfplan`.
 
@@ -314,7 +326,7 @@ Permissões opcionais (recomendadas pela própria documentação do recurso `aws
 **Positivas**
 - Estrutura de arquivos clara, no padrão oficial de módulo Terraform, fácil de revisar em PR e de estender.
 - Nenhuma credencial hardcoded; tagging obrigatório via `default_tags` garante rastreabilidade de custo desde o primeiro recurso.
-- Escopo mínimo e auditável: um único recurso (`aws_vpc.main`), risco de blast radius baixo.
+- Escopo mínimo e auditável: um único recurso (`aws_vpc.this`), risco de blast radius baixo.
 - Versão do provider fixada de forma restritiva (`~> 6.53.0`), evitando quebras por upgrades maiores não testados.
 
 **Negativas / riscos e mitigação**
@@ -334,22 +346,22 @@ Permissões opcionais (recomendadas pela própria documentação do recurso `aws
 
 ## Estratégia de rollback
 
-1. Como há um único recurso gerenciado (`aws_vpc.main`) e nenhuma dependência downstream nesta ADR, o rollback é direto: `terraform destroy` (ou `terraform destroy -target=aws_vpc.main`) dentro de `network/`.
+1. Como há um único recurso gerenciado (`aws_vpc.this`) e nenhuma dependência downstream nesta ADR, o rollback é direto: `terraform destroy` (ou `terraform destroy -target=aws_vpc.this`) dentro de `network/`.
 2. Antes de qualquer `destroy`, fazer backup do arquivo de state (`terraform.tfstate` e `terraform.tfstate.backup`, se backend local) para permitir reconstrução do histórico caso necessário.
 3. Se o `apply` falhar parcialmente (cenário improvável para um único recurso, mas aplicável a ADRs futuros com mais recursos), usar `terraform plan` para diagnosticar o estado real vs. desejado antes de qualquer ação destrutiva.
 4. Qualquer `destroy` em ambiente compartilhado ou que já tenha sido usado por outros recursos dependentes exige aprovação humana explícita antes da execução pelo `aws-devops-engineer`.
 
 ## Critérios de aceite
 
-- [ ] Diretório `network/` existe na raiz do repositório contendo exatamente os arquivos: `versions.tf`, `providers.tf`, `variables.tf`, `vpc.tf`, `outputs.tf`.
+- [ ] Diretório `network/` existe na raiz do repositório contendo exatamente os arquivos: `versions.tf`, `providers.tf`, `variables.tf`, `terraform.tfvars`, `vpc.tf`, `outputs.tf`.
 - [ ] `terraform init` executa sem erros e resolve o provider `hashicorp/aws` na constraint `~> 6.53.0`.
 - [ ] `terraform fmt -check` não reporta diferenças.
 - [ ] `terraform validate` retorna `Success!`.
-- [ ] `terraform plan` mostra exatamente 1 recurso a ser criado (`aws_vpc.main`) e 0 a alterar/destruir.
+- [ ] `terraform plan` mostra exatamente 1 recurso a ser criado (`aws_vpc.this`) e 0 a alterar/destruir.
 - [ ] Nenhum arquivo `.tf` contém `access_key`, `secret_key` ou qualquer credencial literal.
-- [ ] Após `apply` aprovado por humano: `aws_vpc.main` existe na conta/região de destino com `cidr_block = 10.0.0.0/16`, tags `Project`, `Environment`, `ManagedBy`, `Repository` e `Name` presentes.
+- [ ] Após `apply` aprovado por humano: `aws_vpc.this` existe na conta/região de destino com `cidr_block = 10.0.0.0/16`, tags `Project`, `Environment`, `ManagedBy`, `Repository` e `Name` presentes.
 - [ ] Outputs `vpc_id`, `vpc_arn`, `vpc_cidr_block`, `default_security_group_id`, `default_route_table_id`, `default_network_acl_id` retornam valores não vazios após `apply`.
-- [ ] Nenhum recurso além de `aws_vpc.main` foi criado (sem subnets, IGW, NAT, security groups adicionais).
+- [ ] Nenhum recurso além de `aws_vpc.this` foi criado (sem subnets, IGW, NAT, security groups adicionais).
 
 ## Referências
 
