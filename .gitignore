@@ -47,3 +47,13 @@ override.tf.json
 terraform.rc
 
 # End of https://www.toptal.com/developers/gitignore/api/terraform,dotnetcore,node
+
+### Claude Code skills ###
+# Diretórios de trabalho gerados pelo skill-creator ao testar/avaliar uma
+# skill (repositórios fake, states, benchmarks, viewer HTML) — são artefatos
+# de teste, não fazem parte da skill em si.
+.claude/skills/*-workspace/
+
+# Pacotes .skill empacotados (build artifact) — a fonte versionada é o
+# diretório da skill (SKILL.md + scripts/ + evals/), não o zip gerado.
+*.skill
