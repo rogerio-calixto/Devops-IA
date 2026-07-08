@@ -28,10 +28,8 @@ vpc = {
 }
 
 nat_gateway = {
-  # DECISÃO (ver ADR-002, seção "Decisão", confirmada por humano em 2026-07-07):
-  # desabilitado nesta rodada — sem custo recorrente adicional. Subnets privadas
-  # ficam sem egress à internet até uma mudança futura pontual.
-  # Se true: CUSTO RECORRENTE REAL (~US$ 36,50/mês fixos + processamento de dados
-  # variável) — exige aprovação humana explícita antes do apply.
+  # DECISÃO (ver ADR-002, seção "Decisão"): desabilitado novamente a partir de
+  # 2026-07-08, confirmado por humano — sem custo recorrente adicional.
+  # Subnets privadas ficam sem egress à internet até uma mudança futura pontual.
   enabled = false
 }
